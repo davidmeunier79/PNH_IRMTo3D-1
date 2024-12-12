@@ -157,9 +157,16 @@
 
         "avg_reorient_pipe":
         {
-
             "comment": "OPTIONAL",
             "params": "see corresponding doc in short_preparation_pipe in macapype"
+
+        },
+
+        "petra_itk_debias":
+        {
+            "comment": "OPTIONAL",
+            "params": "SimpleITK N4BiasFieldCorrectionImageFilter dirty wrap (defined in macapype.nodes.correc_bias)",
+            "comment": "Should be made a proper nipype node ",
 
         },
 

@@ -98,7 +98,7 @@
         }
     },
     "skull_petra_pipe":
-    {
+    {   "petra_itk_debias":{},
         "petra_head_auto_mask":
         {
             "kmeans": true,

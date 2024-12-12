@@ -682,17 +682,19 @@ def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
     skull_petra_pipe.connect(inputnode, "stereo_T1",
                              align_petra_on_stereo_T1, "ref_file")
 
-    # Adding early petra_debias
-    petra_itk_debias = NodeParams(
-            interface=niu.Function(
-                input_names=["img_file"],
-                output_names=["cor_img_file", "bias_img_file"],
-                function=itk_debias),
-            params=parse_key(params, "petra_itk_debias"),
-            name="petra_itk_debias")
+    if "petra_itk_debias" in params.keys():
 
-    skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
-                             petra_itk_debias, "img_file")
+        # Adding early petra_debias
+        petra_itk_debias = pe.Node(
+                interface=niu.Function(
+                    input_names=["img_file"],
+                    output_names=["cor_img_file", "bias_img_file"],
+                    function=itk_debias),
+                name="petra_itk_debias")
+
+        skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
+                                 petra_itk_debias, "img_file")
+
 
     # ### head mask
     # headmask_threshold
@@ -703,8 +705,15 @@ def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
             params=parse_key(params, 'petra_head_mask_thr'),
             name="petra_head_mask_thr")
 
-        skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
-                                 petra_head_mask_thr, "in_file")
+
+        if "petra_itk_debias" in params.keys():
+
+            skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
+                                     petra_head_mask_thr, "in_file")
+        else:
+
+            skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
+                                     petra_head_mask_thr, "in_file")
 
         skull_petra_pipe.connect(
             inputnode, ('indiv_params', parse_key, "petra_head_mask_thr"),
@@ -720,8 +729,14 @@ def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
                 params=parse_key(params, "petra_head_auto_mask"),
                 name="petra_head_auto_mask")
 
-        skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
-                                 petra_head_auto_mask, "img_file")
+        if "petra_itk_debias" in params.keys():
+
+            skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
+                                     petra_head_auto_mask, "img_file")
+        else:
+
+            skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
+                                     petra_head_auto_mask, "img_file")
 
         skull_petra_pipe.connect(
             inputnode, ('indiv_params', parse_key, "petra_head_auto_mask"),
@@ -790,6 +805,15 @@ def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
     # petra_hmasked ####### [okey]
     petra_hmasked = pe.Node(interface=ApplyMask(),
                             name="petra_hmasked")
+
+    if "petra_itk_debias" in params.keys():
+
+        skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
+                                 petra_hmasked, "in_file")
+    else:
+
+        skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
+                                 petra_hmasked, "in_file")
 
     skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
                              petra_hmasked, "in_file")
