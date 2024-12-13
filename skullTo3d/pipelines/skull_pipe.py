@@ -695,7 +695,6 @@ def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
         skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
                                  petra_itk_debias, "img_file")
 
-
     # ### head mask
     # headmask_threshold
     if "petra_head_mask_thr" in params.keys():
@@ -704,7 +703,6 @@ def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
             interface=Threshold(),
             params=parse_key(params, 'petra_head_mask_thr'),
             name="petra_head_mask_thr")
-
 
         if "petra_itk_debias" in params.keys():
 
