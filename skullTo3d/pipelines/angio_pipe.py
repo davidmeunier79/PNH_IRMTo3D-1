@@ -177,6 +177,93 @@ def create_angio_pipe(name="angio_pipe", params={}):
 
     return angio_pipe
 
+def create_autonomous_quick_angio_pipe(name="quick_angio_pipe", params={}):
+
+    # Creating pipeline
+    angio_pipe = pe.Workflow(name=name)
+
+    # Creating input node
+    inputnode = pe.Node(
+        niu.IdentityInterface(fields=['angio',
+                                      'indiv_params']),
+        name='inputnode'
+    )
+
+    # creating outputnode #######
+    outputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=["stereo_angio", "stereo_angio_mask"]),
+        name='outputnode')
+
+    # angio_auto_thresh
+    if "angio_mask_thr" in params.keys():
+
+        print("*** angio_mask_thr ***")
+
+        # angio_mask_thr ####### [okey][json]
+        angio_mask_thr = NodeParams(
+            interface=Threshold(),
+            params=parse_key(params, "angio_mask_thr"),
+            name="angio_mask_thr")
+
+        angio_pipe.connect(
+            inputnode, ("indiv_params", parse_key, "angio_mask_thr"),
+            angio_mask_thr, "indiv_params")
+
+        angio_pipe.connect(inputnode, 'angio',
+                           angio_mask_thr, "in_file")
+
+    else:
+
+        print("*** angio_auto_mask ***")
+
+        angio_fast = NodeParams(
+            interface=FAST(),
+            params=parse_key(params, "angio_fast"),
+            name="angio_fast")
+
+        angio_pipe.connect(inputnode, 'angio',
+                           angio_fast, "in_files")
+
+        angio_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "angio_fast"),
+            angio_fast, "indiv_params")
+
+    # angio_mask_binary
+    angio_mask_binary = pe.Node(interface=UnaryMaths(),
+                                name="angio_mask_binary")
+
+    angio_mask_binary.inputs.operation = 'bin'
+    angio_mask_binary.inputs.output_type = 'NIFTI_GZ'
+
+    if "angio_mask_thr" in params.keys():
+
+        angio_pipe.connect(
+            angio_mask_thr, "out_file",
+            angio_mask_binary, "in_file")
+
+    else:
+        angio_pipe.connect(
+            angio_fast, ("partial_volume_files", get_elem, 0),
+            angio_mask_binary, "in_file")
+
+    # angio_gcc ####### [okey]
+    angio_gcc = pe.Node(
+        interface=niu.Function(
+            input_names=["nii_file"],
+            output_names=["gcc_nii_file"],
+            function=keep_gcc),
+        name="angio_gcc")
+
+    angio_pipe.connect(
+        angio_mask_binary, "out_file",
+        angio_gcc, "nii_file")
+
+    angio_pipe.connect(angio_gcc, 'gcc_nii_file',
+                       outputnode, 'stereo_angio_mask')
+
+    return angio_pipe
+
 
 def create_quick_angio_pipe(name="quick_angio_pipe", params={}):
 

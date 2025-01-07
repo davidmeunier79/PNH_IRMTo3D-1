@@ -78,7 +78,8 @@ from macapype.pipelines.rename import rename_all_brain_derivatives
 
 
 from skullTo3d.pipelines.angio_pipe import (
-    create_angio_pipe, create_quick_angio_pipe)
+    create_angio_pipe, create_quick_angio_pipe,
+    create_autonomous_quick_angio_pipe)
 
 from skullTo3d.pipelines.skull_pipe import (
     create_skull_petra_pipe,
@@ -659,23 +660,32 @@ def create_main_workflow(data_dir, process_dir, soft, species, subjects,
     if "angio" in skull_dt and "angio_quick_pipe" in params.keys():
         print("Found angio_pipe")
 
-        angio_pipe = create_quick_angio_pipe(
-            params=parse_key(params, "angio_quick_pipe"))
+        if len(brain_dt):
 
-        main_workflow.connect(datasource, ('ANGIO', get_first_elem),
-                              angio_pipe, 'inputnode.angio')
+            angio_pipe = create_quick_angio_pipe(
+                params=parse_key(params, "angio_quick_pipe"))
 
-        main_workflow.connect(segment_brain_pipe,
-                              "outputnode.native_T1",
-                              angio_pipe, 'inputnode.native_T1')
+            main_workflow.connect(datasource, ('ANGIO', get_first_elem),
+                                angio_pipe, 'inputnode.angio')
 
-        main_workflow.connect(segment_brain_pipe,
-                              "outputnode.stereo_padded_T1",
-                              angio_pipe, 'inputnode.stereo_T1')
+            main_workflow.connect(segment_brain_pipe,
+                                "outputnode.native_T1",
+                                angio_pipe, 'inputnode.native_T1')
 
-        main_workflow.connect(
-            segment_brain_pipe, "outputnode.native_to_stereo_trans",
-            angio_pipe, 'inputnode.native_to_stereo_trans')
+            main_workflow.connect(segment_brain_pipe,
+                                "outputnode.stereo_padded_T1",
+                                angio_pipe, 'inputnode.stereo_T1')
+
+            main_workflow.connect(
+                segment_brain_pipe, "outputnode.native_to_stereo_trans",
+                angio_pipe, 'inputnode.native_to_stereo_trans')
+        else:
+
+            angio_pipe = create_autonomous_quick_angio_pipe(
+                params=parse_key(params, "angio_quick_pipe"))
+
+            main_workflow.connect(datasource, ('ANGIO', get_first_elem),
+                                angio_pipe, 'inputnode.angio')
 
     if 't1' in skull_dt and "skull_t1_pipe" in params.keys():
         print("Found skull_t1_pipe")
