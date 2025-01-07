@@ -312,8 +312,6 @@ def create_main_workflow(data_dir, process_dir, soft, species, subjects,
     if "spm" in ssoft or "spm12" in ssoft or "ants" in ssoft:
         print("Segmenting brain, default is t1 based")
 
-
-
         # adding forced space
         if "spm" in ssoft or "spm12" in ssoft:
             if 'native' in ssoft:
@@ -398,40 +396,40 @@ def create_main_workflow(data_dir, process_dir, soft, species, subjects,
 
         print (params_template)
 
-        # main_workflow
-        main_workflow = pe.Workflow(name= wf_name)
-
-        main_workflow.base_dir = process_dir
-
-        if "template" in ssoft:
-            space = "template"
-
-        else:
-            space = "native"
-
-
-        # which soft is used
-        if "spm" in ssoft or "spm12" in ssoft:
-            segment_brain_pipe = create_full_spm_subpipes(
-                params_template=params_template,
-                params_template_stereo=params_template_stereo,
-                params=params, pad=pad, space=space)
-
-        elif "ants" in ssoft:
-            if "t1" in brain_dt and 't2' in brain_dt:
-                segment_brain_pipe = create_full_ants_subpipes(
-                    params_template=params_template,
-                    params_template_stereo=params_template_stereo,
-                    params=params, mask_file=mask_file, space=space, pad=pad)
-
-            elif "t1" in brain_dt:
-                segment_brain_pipe = create_full_T1_ants_subpipes(
-                    params_template=params_template,
-                    params_template_stereo=params_template_stereo,
-                    params=params, space=space, pad=pad)
-
     else:
         print(f"error with {ssoft}, should be among [spm12, spm, ants])")
+
+    # main_workflow
+    main_workflow = pe.Workflow(name= wf_name)
+
+    main_workflow.base_dir = process_dir
+
+    if "template" in ssoft:
+        space = "template"
+
+    else:
+        space = "native"
+
+
+    # which soft is used
+    if "spm" in ssoft or "spm12" in ssoft:
+        segment_brain_pipe = create_full_spm_subpipes(
+            params_template=params_template,
+            params_template_stereo=params_template_stereo,
+            params=params, pad=pad, space=space)
+
+    elif "ants" in ssoft:
+        if "t1" in brain_dt and 't2' in brain_dt:
+            segment_brain_pipe = create_full_ants_subpipes(
+                params_template=params_template,
+                params_template_stereo=params_template_stereo,
+                params=params, mask_file=mask_file, space=space, pad=pad)
+
+        elif "t1" in brain_dt:
+            segment_brain_pipe = create_full_T1_ants_subpipes(
+                params_template=params_template,
+                params_template_stereo=params_template_stereo,
+                params=params, space=space, pad=pad)
 
     # list of all required outputs
     output_query = {}
@@ -471,25 +469,27 @@ def create_main_workflow(data_dir, process_dir, soft, species, subjects,
             output_query, data_dir, indiv_params, subjects, sessions,
             acquisitions, reconstructions)
 
-        main_workflow.connect(datasource, "indiv_params",
-                              segment_brain_pipe, 'inputnode.indiv_params')
+        if "spm" in ssoft or "spm12" in ssoft or "ants" in ssoft:
+            main_workflow.connect(datasource, "indiv_params",
+                                  segment_brain_pipe, 'inputnode.indiv_params')
     else:
         datasource = create_datasource(
             output_query, data_dir, subjects,  sessions, acquisitions,
             reconstructions)
 
-    if "t1" in brain_dt:
-        main_workflow.connect(datasource, 'T1',
-                              segment_brain_pipe, 'inputnode.list_T1')
+    if "spm" in ssoft or "spm12" in ssoft or "ants" in ssoft:
+        if "t1" in brain_dt:
+            main_workflow.connect(datasource, 'T1',
+                                segment_brain_pipe, 'inputnode.list_T1')
 
-    if "t2" in brain_dt:
-        main_workflow.connect(datasource, 'T2',
-                              segment_brain_pipe, 'inputnode.list_T2')
+        if "t2" in brain_dt:
+            main_workflow.connect(datasource, 'T2',
+                                segment_brain_pipe, 'inputnode.list_T2')
 
-    elif "t1" in brain_dt and "spm" in ssoft:
-        # cheating using T2 as T1
-        main_workflow.connect(datasource, 'T1',
-                              segment_brain_pipe, 'inputnode.list_T2')
+        elif "t1" in brain_dt and "spm" in ssoft:
+            # cheating using T2 as T1
+            main_workflow.connect(datasource, 'T1',
+                                segment_brain_pipe, 'inputnode.list_T2')
 
     if "petra" in skull_dt and "skull_petra_pipe" in params.keys():
         print("Found skull_petra_pipe")
