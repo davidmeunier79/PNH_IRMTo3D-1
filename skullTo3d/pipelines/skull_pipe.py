@@ -610,6 +610,415 @@ def create_skull_ct_pipe(name="skull_ct_pipe", params={}):
 # ####################  PETRA  #####################
 ###############################################################################
 
+def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
+
+    # creating pipeline
+    skull_petra_pipe = pe.Workflow(name=name)
+
+    # Creating input node
+    inputnode = pe.Node(
+        niu.IdentityInterface(fields=['petra',
+                                      'indiv_params']),
+        name='inputnode'
+    )
+
+    # average if multiple PETRA
+    if "avg_reorient_pipe" in params.keys():
+        print("Found avg_reorient_pipe for av_PETRA")
+
+        av_PETRA = _create_avg_reorient_pipeline(
+            name="av_PETRA", params=parse_key(params, "avg_reorient_pipe"))
+
+        skull_petra_pipe.connect(inputnode, 'petra',
+                                 av_PETRA, "inputnode.list_img")
+
+        skull_petra_pipe.connect(inputnode, 'indiv_params',
+                                 av_PETRA, "inputnode.indiv_params")
+    else:
+        print("Using average_align for av_PETRA")
+        print(params)
+
+        av_PETRA = pe.Node(
+            niu.Function(input_names=['list_img', "reorient"],
+                         output_names=['avg_img'],
+                         function=average_align),
+            name="av_PETRA")
+
+        skull_petra_pipe.connect(inputnode, 'petra',
+                                 av_PETRA, "list_img")
+
+    if "petra_itk_debias" in params.keys():
+
+        # Adding early petra_debias
+        petra_itk_debias = pe.Node(
+                interface=niu.Function(
+                    input_names=["img_file"],
+                    output_names=["cor_img_file", "bias_img_file"],
+                    function=itk_debias),
+                name="petra_itk_debias")
+
+        if "avg_reorient_pipe" in params.keys():
+            skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
+                                     petra_itk_debias, "img_file")
+        else:
+            skull_petra_pipe.connect(av_PETRA, 'avg_img',
+                                     petra_itk_debias, "img_file")
+
+    # ### head mask
+    # headmask_threshold
+    if "petra_head_mask_thr" in params.keys():
+        # petra_head_mask_thr
+        petra_head_mask_thr = NodeParams(
+            interface=Threshold(),
+            params=parse_key(params, 'petra_head_mask_thr'),
+            name="petra_head_mask_thr")
+
+        if "petra_itk_debias" in params.keys():
+
+            skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
+                                     petra_head_mask_thr, "in_file")
+        else:
+
+            if "avg_reorient_pipe" in params.keys():
+                skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
+                                         petra_head_mask_thr, "in_file")
+            else:
+                skull_petra_pipe.connect(av_PETRA, 'avg_img',
+                                         petra_head_mask_thr, "in_file")
+
+        skull_petra_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "petra_head_mask_thr"),
+            petra_head_mask_thr, "indiv_params")
+    else:
+
+        petra_head_auto_mask = NodeParams(
+                interface=niu.Function(
+                    input_names=["img_file", "operation",
+                                 "index", "sample_bins", "distance", "kmeans"],
+                    output_names=["mask_img_file"],
+                    function=mask_auto_img),
+                params=parse_key(params, "petra_head_auto_mask"),
+                name="petra_head_auto_mask")
+
+        if "petra_itk_debias" in params.keys():
+
+            skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
+                                     petra_head_auto_mask, "img_file")
+        else:
+
+            if "avg_reorient_pipe" in params.keys():
+                skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
+                                         petra_head_auto_mask, "img_file")
+            else:
+                skull_petra_pipe.connect(av_PETRA, 'avg_img',
+                                         petra_head_auto_mask, "img_file")
+
+        skull_petra_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "petra_head_auto_mask"),
+            petra_head_auto_mask, "indiv_params")
+
+    # petra_head_mask_binary
+    petra_head_mask_binary = pe.Node(interface=UnaryMaths(),
+                                     name="petra_head_mask_binary")
+
+    petra_head_mask_binary.inputs.operation = 'bin'
+    petra_head_mask_binary.inputs.output_type = 'NIFTI_GZ'
+
+    if "petra_head_mask_thr" in params.keys():
+
+        skull_petra_pipe.connect(petra_head_mask_thr, "out_file",
+                                 petra_head_mask_binary, "in_file")
+    else:
+
+        skull_petra_pipe.connect(petra_head_auto_mask, "mask_img_file",
+                                 petra_head_mask_binary, "in_file")
+    # petra_head_mask_binary_clean1
+    petra_head_gcc = pe.Node(
+        interface=niu.Function(input_names=["nii_file"],
+                               output_names=["gcc_nii_file"],
+                               function=keep_gcc),
+        name="petra_head_gcc")
+
+    skull_petra_pipe.connect(petra_head_mask_binary, "out_file",
+                             petra_head_gcc, "nii_file")
+
+    # petra_head_dilate
+    petra_head_dilate = NodeParams(
+        interface=DilateImage(),
+        params=parse_key(params, "petra_head_dilate"),
+        name="petra_head_dilate")
+
+    skull_petra_pipe.connect(petra_head_gcc, "gcc_nii_file",
+                             petra_head_dilate, "in_file")
+
+    skull_petra_pipe.connect(
+        inputnode, ('indiv_params', parse_key, "petra_head_dilate"),
+        petra_head_dilate, "indiv_params")
+
+    # petra_head_fill
+    petra_head_fill = pe.Node(interface=UnaryMaths(),
+                              name="petra_head_fill")
+
+    petra_head_fill.inputs.operation = 'fillh'
+
+    skull_petra_pipe.connect(petra_head_dilate, "out_file",
+                             petra_head_fill, "in_file")
+
+    # petra_head_erode ####### [okey][json]
+    petra_head_erode = NodeParams(interface=ErodeImage(),
+                                  params=parse_key(params, "petra_head_erode"),
+                                  name="petra_head_erode")
+
+    skull_petra_pipe.connect(petra_head_fill, "out_file",
+                             petra_head_erode, "in_file")
+
+    skull_petra_pipe.connect(
+        inputnode, ('indiv_params', parse_key, "petra_head_erode"),
+        petra_head_erode, "indiv_params")
+
+    # ### Masking with head mask
+    # petra_hmasked ####### [okey]
+    petra_hmasked = pe.Node(interface=ApplyMask(),
+                            name="petra_hmasked")
+
+    if "petra_itk_debias" in params.keys():
+
+        skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
+                                 petra_hmasked, "in_file")
+    else:
+
+        skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
+                                 petra_hmasked, "in_file")
+
+    skull_petra_pipe.connect(petra_head_erode, "out_file",
+                             petra_hmasked, "mask_file")
+
+    if "petra_debias" in params.keys():
+
+        # N4 intensity normalization over T1
+        petra_debias = NodeParams(N4BiasFieldCorrection(),
+                                  params=parse_key(params, "petra_debias"),
+                                  name='petra_debias')
+
+        skull_petra_pipe.connect(petra_hmasked, "out_file",
+                                 petra_debias, "input_image")
+
+        skull_petra_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "petra_debias"),
+            petra_debias, "indiv_params")
+
+    # petra_fast
+    petra_fast = NodeParams(interface=FAST(),
+                            params=parse_key(params, "petra_fast"),
+                            name="petra_fast")
+
+    skull_petra_pipe.connect(
+        inputnode, ('indiv_params', parse_key, "petra_fast"),
+        petra_fast, "indiv_params")
+
+    if "petra_debias" in params.keys():
+        skull_petra_pipe.connect(petra_debias, "output_image",
+                                 petra_fast, "in_files")
+    else:
+        skull_petra_pipe.connect(petra_hmasked, "out_file",
+                                 petra_fast, "in_files")
+
+    if "petra_skull_auto_mask" in params.keys():
+
+        print("*** petra_skull_auto_mask ***")
+
+        petra_skull_auto_mask = NodeParams(
+                interface=niu.Function(
+                    input_names=["img_file", "operation",
+                                 "index", "sample_bins", "distance", "kmeans"],
+                    output_names=["mask_img_file"],
+                    function=mask_auto_img),
+                params=parse_key(params, "petra_skull_auto_mask"),
+                name="petra_skull_auto_mask")
+
+        skull_petra_pipe.connect(petra_fast, "restored_image",
+                                 petra_skull_auto_mask, "img_file")
+
+        skull_petra_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "petra_skull_auto_mask"),
+            petra_skull_auto_mask, "indiv_params")
+
+    elif "petra_skull_mask_thr" in params.keys():
+
+        # petra_skull_mask_thr
+        petra_skull_mask_thr = NodeParams(
+            interface=Threshold(),
+            params=parse_key(params, 'petra_skull_mask_thr'),
+            name="petra_skull_mask_thr")
+
+        skull_petra_pipe.connect(petra_fast, "restored_image",
+                                 petra_skull_mask_thr, "in_file")
+
+        skull_petra_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "petra_skull_mask_thr"),
+            petra_skull_mask_thr, "indiv_params")
+
+    # petra_skull_mask_binary
+    petra_skull_mask_binary = pe.Node(interface=UnaryMaths(),
+                                      name="petra_skull_mask_binary")
+
+    petra_skull_mask_binary.inputs.operation = 'bin'
+    petra_skull_mask_binary.inputs.output_type = 'NIFTI_GZ'
+
+    if "petra_skull_auto_mask" in params.keys():
+        skull_petra_pipe.connect(petra_skull_auto_mask, "mask_img_file",
+                                 petra_skull_mask_binary, "in_file")
+    if "petra_skull_mask_thr" in params.keys():
+        skull_petra_pipe.connect(petra_skull_mask_thr, "out_file",
+                                 petra_skull_mask_binary, "in_file")
+    else:
+        skull_petra_pipe.connect(petra_fast,
+                                 ("partial_volume_files", get_elem, 0),
+                                 petra_skull_mask_binary, "in_file")
+
+    # petra_skull_auto_thresh
+    if "petra_head_erode_skin" in params.keys():
+
+        petra_head_erode_skin = NodeParams(
+            interface=ErodeImage(),
+            params=parse_key(params, "petra_head_erode_skin"),
+            name="petra_head_erode_skin")
+
+        skull_petra_pipe.connect(petra_head_erode, "out_file",
+                                 petra_head_erode_skin, "in_file")
+
+        skull_petra_pipe.connect(
+            inputnode, ("indiv_params", parse_key, "petra_head_erode_skin"),
+            petra_head_erode_skin, "indiv_params")
+
+        # ### Masking with petra_head mask
+        # petra_hmasked ####### [okey]
+        petra_skin_masked = pe.Node(interface=ApplyMask(),
+                                    name="petra_skin_masked")
+
+        skull_petra_pipe.connect(petra_skull_mask_binary, "out_file",
+                                 petra_skin_masked, "in_file")
+
+        skull_petra_pipe.connect(petra_head_erode_skin, "out_file",
+                                 petra_skin_masked, "mask_file")
+
+    # petra_skull_gcc ####### [okey]
+    petra_skull_gcc = pe.Node(
+        interface=niu.Function(
+            input_names=["nii_file"],
+            output_names=["gcc_nii_file"],
+            function=keep_gcc),
+        name="petra_skull_gcc")
+
+    if "petra_head_erode_skin" in params.keys():
+
+        skull_petra_pipe.connect(petra_skin_masked, "out_file",
+                                 petra_skull_gcc, "nii_file")
+    else:
+        skull_petra_pipe.connect(petra_skull_mask_binary, "out_file",
+                                 petra_skull_gcc, "nii_file")
+
+    # petra_skull_dilate ####### [okey][json]
+    petra_skull_dilate = NodeParams(
+        interface=DilateImage(),
+        params=parse_key(params, "petra_skull_dilate"),
+        name="petra_skull_dilate")
+
+    skull_petra_pipe.connect(petra_skull_gcc, "gcc_nii_file",
+                             petra_skull_dilate, "in_file")
+
+    skull_petra_pipe.connect(
+        inputnode, ('indiv_params', parse_key, "petra_skull_dilate"),
+        petra_skull_dilate, "indiv_params")
+
+    # petra_skull_fill #######  [okey]
+    petra_skull_fill = pe.Node(interface=UnaryMaths(),
+                               name="petra_skull_fill")
+
+    petra_skull_fill.inputs.operation = 'fillh'
+
+    skull_petra_pipe.connect(petra_skull_dilate, "out_file",
+                             petra_skull_fill, "in_file")
+
+    # petra_skull_erode ####### [okey][json]
+    petra_skull_erode = NodeParams(
+        interface=ErodeImage(),
+        params=parse_key(params, "petra_skull_erode"),
+        name="petra_skull_erode")
+
+    skull_petra_pipe.connect(petra_skull_fill, "out_file",
+                             petra_skull_erode, "in_file")
+
+    skull_petra_pipe.connect(
+        inputnode, ('indiv_params', parse_key, "petra_skull_erode"),
+        petra_skull_erode, "indiv_params")
+
+    # mesh_petra_skull #######
+    mesh_petra_skull = pe.Node(
+        interface=IsoSurface(),
+        name="mesh_petra_skull")
+
+    skull_petra_pipe.connect(petra_skull_erode, "out_file",
+                             mesh_petra_skull, "nii_file")
+
+    if "petra_skull_fov" in params.keys():
+
+        # petra_skull_fov ####### [okey][json]
+        petra_skull_fov = NodeParams(
+            interface=RobustFOV(),
+            params=parse_key(params, "petra_skull_fov"),
+            name="petra_skull_fov")
+
+        skull_petra_pipe.connect(petra_skull_erode, "out_file",
+                                 petra_skull_fov, "in_file")
+
+        skull_petra_pipe.connect(
+            inputnode, ('indiv_params', parse_key, "petra_skull_fov"),
+            petra_skull_fov, "indiv_params")
+
+        # petra_skull_clean ####### [okey]
+        petra_skull_clean = pe.Node(
+            interface=niu.Function(input_names=["nii_file"],
+                                   output_names=["gcc_nii_file"],
+                                   function=keep_gcc),
+            name="petra_skull_clean")
+
+        skull_petra_pipe.connect(petra_skull_fov, "out_roi",
+                                 petra_skull_clean, "nii_file")
+
+        # mesh_robustpetra_skull #######
+        mesh_robustpetra_skull = pe.Node(
+            interface=IsoSurface(),
+            name="mesh_robustpetra_skull")
+
+        skull_petra_pipe.connect(petra_skull_clean, "gcc_nii_file",
+                                 mesh_robustpetra_skull, "nii_file")
+
+    # creating outputnode #######
+    outputnode = pe.Node(
+        niu.IdentityInterface(
+            fields=["petra_skull_mask", "petra_skull_stl",
+                    "robustpetra_skull_mask", "robustpetra_skull_stl",
+                    "petra_head_mask"]),
+        name='outputnode')
+
+    skull_petra_pipe.connect(petra_head_erode, "out_file",
+                             outputnode, "petra_head_mask")
+
+    skull_petra_pipe.connect(mesh_petra_skull, "stl_file",
+                             outputnode, "petra_skull_stl")
+
+    skull_petra_pipe.connect(petra_skull_erode, "out_file",
+                             outputnode, "petra_skull_mask")
+
+    if "petra_skull_fov" in params.keys():
+        skull_petra_pipe.connect(petra_skull_fov, "out_roi",
+                                 outputnode, "robustpetra_skull_mask")
+
+        skull_petra_pipe.connect(mesh_robustpetra_skull, "stl_file",
+                                 outputnode, "robustpetra_skull_stl")
+
+    return skull_petra_pipe
 
 def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
 
