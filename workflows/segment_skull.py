@@ -147,8 +147,10 @@ def create_main_workflow(data_dir, process_dir, soft, species, subjects,
 
     """
 
-    if len(brain_dt):
+    if brain_dt is not None:
         brain_dt = [dt.lower() for dt in brain_dt]
+    else:
+        brain_dt = []
 
     skull_dt = [dt.lower() for dt in skull_dt]
 
