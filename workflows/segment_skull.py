@@ -523,8 +523,6 @@ def create_main_workflow(data_dir, process_dir, soft, species, subjects,
             skull_petra_pipe = create_autonomous_skull_petra_pipe(
                 params=parse_key(params, "skull_petra_pipe"))
 
-            0/0
-
         # all remaining connection
         main_workflow.connect(datasource, ('PETRA', show_files),
                               skull_petra_pipe, 'inputnode.petra')
