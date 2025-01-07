@@ -786,9 +786,12 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
         skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
                                  petra_hmasked, "in_file")
     else:
-
-        skull_petra_pipe.connect(align_petra_on_stereo_T1, "out_file",
-                                 petra_hmasked, "in_file")
+        if "avg_reorient_pipe" in params.keys():
+            skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
+                                     petra_hmasked, "in_file")
+        else:
+            skull_petra_pipe.connect(av_PETRA, 'avg_img',
+                                     petra_hmasked, "in_file")
 
     skull_petra_pipe.connect(petra_head_erode, "out_file",
                              petra_hmasked, "mask_file")
@@ -1019,6 +1022,7 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
                                  outputnode, "robustpetra_skull_stl")
 
     return skull_petra_pipe
+
 
 def create_skull_petra_pipe(name="skull_petra_pipe", params={}):
 
