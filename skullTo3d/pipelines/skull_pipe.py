@@ -647,6 +647,25 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
         skull_petra_pipe.connect(inputnode, 'petra',
                                  av_PETRA, "list_img")
 
+    if "crop_petra" in params:
+
+        # cropping
+        # Crop bounding box for petra
+        crop_petra = NodeParams(fsl.ExtractROI(),
+                             params=parse_key(params, 'crop_petra'),
+                             name='crop_petra')
+
+        skull_petra_pipe.connect(
+            inputnode, ("indiv_params", parse_key, "crop_petra"),
+            crop_petra, 'indiv_params')
+
+        if "avg_reorient_pipe" in params.keys():
+            skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
+                                          crop_petra, 'in_file')
+        else:
+            skull_petra_pipe.connect(av_T1, 'avg_img',
+                                          crop_petra, 'in_file')
+
     if "petra_itk_debias" in params.keys():
 
         # Adding early petra_debias
@@ -657,7 +676,10 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
                     function=itk_debias),
                 name="petra_itk_debias")
 
-        if "avg_reorient_pipe" in params.keys():
+        if "crop_petra" in params:
+            skull_petra_pipe.connect(crop_petra, "roi_file",
+                                     petra_itk_debias, "img_file")
+        elif "avg_reorient_pipe" in params.keys():
             skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
                                      petra_itk_debias, "img_file")
         else:
@@ -674,17 +696,18 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
             name="petra_head_mask_thr")
 
         if "petra_itk_debias" in params.keys():
-
             skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
                                      petra_head_mask_thr, "in_file")
         else:
-
-            if "avg_reorient_pipe" in params.keys():
+            if "crop_petra" in params:
+                skull_petra_pipe.connect(crop_petra, "roi_file",
+                                         petra_itk_debias, "img_file")
+            elif "avg_reorient_pipe" in params.keys():
                 skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
-                                         petra_head_mask_thr, "in_file")
+                                         petra_itk_debias, "img_file")
             else:
                 skull_petra_pipe.connect(av_PETRA, 'avg_img',
-                                         petra_head_mask_thr, "in_file")
+                                         petra_itk_debias, "img_file")
 
         skull_petra_pipe.connect(
             inputnode, ('indiv_params', parse_key, "petra_head_mask_thr"),
@@ -705,8 +728,10 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
             skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
                                      petra_head_auto_mask, "img_file")
         else:
-
-            if "avg_reorient_pipe" in params.keys():
+            if "crop_petra" in params:
+                skull_petra_pipe.connect(crop_petra, "roi_file",
+                                         petra_head_auto_mask, "img_file")
+            elif "avg_reorient_pipe" in params.keys():
                 skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
                                          petra_head_auto_mask, "img_file")
             else:
@@ -782,11 +807,13 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
                             name="petra_hmasked")
 
     if "petra_itk_debias" in params.keys():
-
         skull_petra_pipe.connect(petra_itk_debias, "cor_img_file",
                                  petra_hmasked, "in_file")
     else:
-        if "avg_reorient_pipe" in params.keys():
+        if "crop_petra" in params:
+            skull_petra_pipe.connect(crop_petra, "roi_file",
+                                     petra_hmasked, "in_file")
+        elif "avg_reorient_pipe" in params.keys():
             skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
                                      petra_hmasked, "in_file")
         else:
