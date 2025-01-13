@@ -9,6 +9,9 @@ from nipype.interfaces.fsl.maths import (
     DilateImage, ErodeImage,
     ApplyMask, UnaryMaths, Threshold)
 
+
+import nipype.interfaces.fsl as fsl
+
 from nipype.interfaces.fsl.utils import RobustFOV
 from nipype.interfaces.fsl.preprocess import FAST, FLIRT
 
