@@ -666,7 +666,7 @@ def create_autonomous_skull_petra_pipe(name="skull_petra_pipe", params={}):
             skull_petra_pipe.connect(av_PETRA, 'outputnode.std_img',
                                           crop_petra, 'in_file')
         else:
-            skull_petra_pipe.connect(av_T1, 'avg_img',
+            skull_petra_pipe.connect(av_PETRA, 'avg_img',
                                           crop_petra, 'in_file')
 
     if "petra_itk_debias" in params.keys():
